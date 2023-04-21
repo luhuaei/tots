@@ -79,7 +79,6 @@ func New() *TypeScriptify {
 	kinds := make(map[reflect.Kind]string)
 
 	kinds[reflect.Bool] = "boolean"
-	kinds[reflect.Interface] = "any"
 
 	kinds[reflect.Int] = "number"
 	kinds[reflect.Int8] = "number"
@@ -398,16 +397,13 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type) (string, err
 
 	t.alreadyConverted[typeOf] = true
 
-	entityName := t.Prefix + typeOf.Name() + t.Suffix
-	result := fmt.Sprintf("interface %s {\n", entityName)
-	if !t.DontExport {
-		result = "export " + result
-	}
+	result := "{\n"
 	builder := typeScriptClassBuilder{
-		types:  t.kinds,
-		indent: t.Indent,
-		prefix: t.Prefix,
-		suffix: t.Suffix,
+		types:     t.kinds,
+		indent:    t.Indent,
+		prefix:    t.Prefix,
+		suffix:    t.Suffix,
+		typeIndex: -1,
 	}
 
 	fields := deepFields(typeOf)
@@ -511,9 +507,14 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type) (string, err
 		}
 	}
 
+	entityName := t.Prefix + typeOf.Name() + t.Suffix
+	result = fmt.Sprintf("interface %s%s ", entityName, builder.GetGenericType()) + result
 	result += strings.Join(builder.fields, "\n") + "\n"
 	result += "}"
 
+	if !t.DontExport {
+		result = "export " + result
+	}
 	return result, nil
 }
 
@@ -522,6 +523,20 @@ type typeScriptClassBuilder struct {
 	indent         string
 	fields         []string
 	prefix, suffix string
+
+	typeIndex int
+}
+
+func (t *typeScriptClassBuilder) GetGenericType() string {
+	if t.typeIndex < 0 {
+		return ""
+	}
+
+	ts := make([]string, 0, 5)
+	for i := 0; i <= t.typeIndex; i++ {
+		ts = append(ts, fmt.Sprintf("%c", byte('A'+i)))
+	}
+	return fmt.Sprintf("<%s>", strings.Join(ts, ", "))
 }
 
 func (t *typeScriptClassBuilder) AddSimpleArrayField(fieldName string, field reflect.StructField, arrayDepth int, opts TypeOptions) error {
@@ -547,6 +562,11 @@ func (t *typeScriptClassBuilder) AddSimpleField(fieldName string, field reflect.
 	typeScriptType := t.types[kind]
 	if len(opts.TSType) > 0 {
 		typeScriptType = opts.TSType
+	}
+
+	if kind == reflect.Interface {
+		t.typeIndex += 1
+		typeScriptType = fmt.Sprintf("%c", byte('A'+t.typeIndex))
 	}
 
 	if len(typeScriptType) > 0 && len(fieldName) > 0 {
