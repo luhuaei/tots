@@ -357,7 +357,7 @@ func (t *TypeScriptify) getFieldOptions(structType reflect.Type, field reflect.S
 	return opts
 }
 
-func (t *TypeScriptify) getJSONFieldName(field reflect.StructField, isPtr bool) string {
+func (t *TypeScriptify) getJSONFieldName(field reflect.StructField) string {
 	jsonFieldName := ""
 	jsonTag := field.Tag.Get("json")
 	if len(jsonTag) > 0 {
@@ -366,7 +366,6 @@ func (t *TypeScriptify) getJSONFieldName(field reflect.StructField, isPtr bool) 
 			jsonFieldName = strings.Trim(jsonTagParts[0], t.Indent)
 		}
 		hasOmitEmpty := false
-		ignored := false
 		for _, t := range jsonTagParts {
 			if t == "" {
 				break
@@ -375,12 +374,8 @@ func (t *TypeScriptify) getJSONFieldName(field reflect.StructField, isPtr bool) 
 				hasOmitEmpty = true
 				break
 			}
-			if t == "-" {
-				ignored = true
-				break
-			}
 		}
-		if !ignored && isPtr || hasOmitEmpty {
+		if hasOmitEmpty {
 			jsonFieldName = fmt.Sprintf("%s?", jsonFieldName)
 		}
 	} else if /*field.IsExported()*/ field.PkgPath == "" {
@@ -412,7 +407,7 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type) (string, err
 		if isPtr {
 			field.Type = field.Type.Elem()
 		}
-		jsonFieldName := t.getJSONFieldName(field, isPtr)
+		jsonFieldName := t.getJSONFieldName(field)
 		if len(jsonFieldName) == 0 || jsonFieldName == "-" {
 			continue
 		}
