@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-
-	"github.com/tkrajina/go-reflector/reflector"
 )
 
 const (
@@ -45,15 +43,6 @@ func (st *StructType) WithFieldOpts(i interface{}, opts TypeOptions) *StructType
 	return st
 }
 
-type EnumType struct {
-	Type reflect.Type
-}
-
-type enumElement struct {
-	value interface{}
-	name  string
-}
-
 type TypeScriptify struct {
 	Prefix     string
 	Suffix     string
@@ -61,8 +50,6 @@ type TypeScriptify struct {
 	DontExport bool
 
 	structTypes []StructType
-	enumTypes   []EnumType
-	enums       map[reflect.Type][]enumElement
 	kinds       map[reflect.Kind]string
 
 	fieldTypeOptions map[reflect.Type]TypeOptions
@@ -222,70 +209,11 @@ func (t *typeScriptClassBuilder) AddMapField(fieldName string, field reflect.Str
 	}
 }
 
-func (t *TypeScriptify) AddEnum(values interface{}) *TypeScriptify {
-	if t.enums == nil {
-		t.enums = map[reflect.Type][]enumElement{}
-	}
-	items := reflect.ValueOf(values)
-	if items.Kind() != reflect.Slice {
-		panic(fmt.Sprintf("Values for %T isn't a slice", values))
-	}
-
-	var elements []enumElement
-	for i := 0; i < items.Len(); i++ {
-		item := items.Index(i)
-
-		var el enumElement
-		if item.Kind() == reflect.Struct {
-			r := reflector.New(item.Interface())
-			val, err := r.Field("Value").Get()
-			if err != nil {
-				panic(fmt.Sprint("missing Type field in ", item.Type().String()))
-			}
-			name, err := r.Field("TSName").Get()
-			if err != nil {
-				panic(fmt.Sprint("missing TSName field in ", item.Type().String()))
-			}
-			el.value = val
-			el.name = name.(string)
-		} else {
-			el.value = item.Interface()
-			if tsNamer, is := item.Interface().(TSNamer); is {
-				el.name = tsNamer.TSName()
-			} else {
-				panic(fmt.Sprint(item.Type().String(), " has no TSName method"))
-			}
-		}
-
-		elements = append(elements, el)
-	}
-	ty := reflect.TypeOf(elements[0].value)
-	t.enums[ty] = elements
-	t.enumTypes = append(t.enumTypes, EnumType{Type: ty})
-
-	return t
-}
-
-// AddEnumValues is deprecated, use `AddEnum()`
-func (t *TypeScriptify) AddEnumValues(typeOf reflect.Type, values interface{}) *TypeScriptify {
-	t.AddEnum(values)
-	return t
-}
-
 func (t *TypeScriptify) Convert() (string, error) {
 	t.alreadyConverted = make(map[reflect.Type]bool)
 	depth := 0
 
 	result := "/* Do not change, this code is generated from Golang structs */\n\n"
-	for _, enumTyp := range t.enumTypes {
-		elements := t.enums[enumTyp.Type]
-		typeScriptCode, err := t.convertEnum(depth, enumTyp.Type, elements)
-		if err != nil {
-			return "", err
-		}
-		result += "\n" + strings.Trim(typeScriptCode, " "+t.Indent+"\r\n")
-	}
-
 	for _, strctTyp := range t.structTypes {
 		typeScriptCode, err := t.convertType(depth, strctTyp.Type)
 		if err != nil {
@@ -298,29 +226,6 @@ func (t *TypeScriptify) Convert() (string, error) {
 
 type TSNamer interface {
 	TSName() string
-}
-
-func (t *TypeScriptify) convertEnum(depth int, typeOf reflect.Type, elements []enumElement) (string, error) {
-	t.logf(depth, "Converting enum %s", typeOf.String())
-	if _, found := t.alreadyConverted[typeOf]; found { // Already converted
-		return "", nil
-	}
-	t.alreadyConverted[typeOf] = true
-
-	entityName := t.Prefix + typeOf.Name() + t.Suffix
-	result := "enum " + entityName + " {\n"
-
-	for _, val := range elements {
-		result += fmt.Sprintf("%s%s = %#v,\n", t.Indent, val.name, val.value)
-	}
-
-	result += "}"
-
-	if !t.DontExport {
-		result = "export " + result
-	}
-
-	return result, nil
 }
 
 func (t *TypeScriptify) getFieldOptions(structType reflect.Type, field reflect.StructField) TypeOptions {
@@ -414,10 +319,7 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type) (string, err
 
 		var err error
 		fldOpts := t.getFieldOptions(typeOf, field)
-		if _, isEnum := t.enums[field.Type]; isEnum {
-			t.logf(depth, "- enum field %s.%s", typeOf.Name(), field.Name)
-			builder.AddEnumField(jsonFieldName, field, fldOpts)
-		} else if fldOpts.TSType != "" { // Struct:
+		if fldOpts.TSType != "" { // Struct:
 			t.logf(depth, "- simple field %s.%s", typeOf.Name(), field.Name)
 			err = builder.AddSimpleField(jsonFieldName, field, fldOpts)
 		} else if field.Type.Kind() == reflect.Struct { // Struct:
@@ -570,11 +472,6 @@ func (t *typeScriptClassBuilder) AddSimpleField(fieldName string, field reflect.
 	}
 
 	return fmt.Errorf("cannot find type for %s (%s/%s)", kind.String(), fieldName, fieldType)
-}
-
-func (t *typeScriptClassBuilder) AddEnumField(fieldName string, field reflect.StructField, opts TypeOptions) {
-	fieldType := field.Type.Name()
-	t.addField(fieldName, t.prefix+fieldType+t.suffix, opts)
 }
 
 func (t *typeScriptClassBuilder) AddStructField(fieldName string, field reflect.StructField, opts TypeOptions) {
