@@ -25,3 +25,36 @@ func TestTots(t *testing.T) {
 	}
 	fmt.Println(str)
 }
+
+type fooType string
+
+const (
+	fooTypeA = "a"
+	fooTypeB = "b"
+)
+
+func TestUnionTsType(t *testing.T) {
+	r := UnionTsType("a", "b", "c", "d")
+	fmt.Println(r)
+	if r != `"a"|"b"|"c"|"d"` {
+		panic("union incorrect")
+	}
+
+	r1 := UnionTsType(1, 2, 3, 4)
+	fmt.Println(r1)
+	if r1 != `1|2|3|4` {
+		panic("union incorrect")
+	}
+
+	r2 := UnionTsType(1.1, 2.2, 3.3, 4.4)
+	fmt.Println(r2)
+	if r2 != `1.1|2.2|3.3|4.4` {
+		panic("union incorrect")
+	}
+
+	r3 := UnionTsType(fooTypeA, fooTypeB)
+	fmt.Println(r3)
+	if r3 != `"a"|"b"` {
+		panic("union incorrect")
+	}
+}
