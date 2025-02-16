@@ -431,7 +431,7 @@ func (t *typeScriptClassBuilder) GetGenericType() string {
 
 	ts := make([]string, 0, 5)
 	for i := 0; i <= t.typeIndex; i++ {
-		ts = append(ts, fmt.Sprintf("%c", byte('A'+i)))
+		ts = append(ts, fmt.Sprintf("%c = any", byte('A'+i)))
 	}
 	return fmt.Sprintf("<%s>", strings.Join(ts, ", "))
 }
